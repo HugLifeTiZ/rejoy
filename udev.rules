@@ -1,0 +1,4 @@
+# udev rules for rejoy
+SUBSYSTEM=="input", ACTION=="add", KERNEL=="event*", DEVPATH!="*virtual*", RUN+="/usr/local/bin/rejoyctl add %k"
+SUBSYSTEM=="input", ACTION=="remove", DEVPATH!="*virtual*", RUN+="/usr/local/bin/rejoyctl rm %k"
+SUBSYSTEM=="input", ACTION=="add", KERNEL=="js*", ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", RUN+="/bin/rm %E{DEVNAME}"

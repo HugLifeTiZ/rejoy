@@ -1,0 +1,10 @@
+[Unit]
+Description=Rejoy Xboxdrv Daemon
+
+[Service]
+ExecStart=/usr/local/bin/rejoyd
+ExecStop=/usr/local/bin/rejoyctl exit
+KillMode=none
+
+[Install]
+WantedBy=graphical.target

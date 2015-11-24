@@ -1,0 +1,30 @@
+#!/bin/bash
+[[ "$(whoami)" != "root" ]] && exec sudo "$0" "$@"
+while getopts dt opt; do case $opt in
+    d) export REJOY_DEBUG=1 ;;
+    t) set -o xtrace ;;
+esac; done; shift $((OPTIND-1))
+
+rejoy_bin="$(readlink -f "$0")"
+this_dir="$(dirname "$rejoy_bin")"
+for rejoy_dir in "$rejoy_path" "$REJOY_PATH" "$this_dir" \
+ "$(readlink -f "$this_dir/../share/rejoy")" "$XDG_DATA_HOME/rejoy" \
+ "$HOME/.local/share/rejoy"; do if [[ -f "$rejoy_dir/funcs" ]]; then
+    export rejoy_path="$rejoy_dir"
+    break
+fi; done; unset rejoy_dir
+source "$rejoy_path/funcs"
+shopt -s nullglob
+
+init_rejoyd
+while read -a cmd </run/rejoy/control; do case ${cmd[0]} in
+    add)       add_joystick ${cmd[1]} ;;
+    rm)        rm_joystick ${cmd[1]} ;;
+    options)   set_options "${cmd[@]:1}" ;;
+    defaults)  set_defaults "${cmd[@]:1}" ;;
+    reset)     reset_options ;;
+    OK|FAIL)   echo "Received own ${cmd[0]} reply. Not using rejoyctl? BAD!" ;;
+    exit)      break ;;
+    *)         echo "Unrecognized command: ${cmd[@]}"; reply_fail ;;
+esac; done
+end_rejoyd

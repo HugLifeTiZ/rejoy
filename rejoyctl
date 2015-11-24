@@ -1,0 +1,9 @@
+#!/bin/bash
+# Communicates with rejoyd and blocks until the thing it's doing succeeds.
+if [[ ! -e /run/rejoy/control ]] && (! pgrep rejoyd); then
+    echo "rejoyd is not running; doing nothing."; exit 0
+fi
+#dd if=/run/rejoy/reply iflag=nonblock of=/dev/null &> /dev/null
+echo "$@" > /run/rejoy/control
+#read reply < /run/rejoy/reply
+#if [[ "$reply" == "OK" ]]; then exit 0; else exit 1; fi

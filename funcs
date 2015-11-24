@@ -1,0 +1,155 @@
+#!/bin/bash
+# ReJoy helper functions.
+
+# Default values.
+resort_js=1
+resort_event=0
+
+# Utility functions.
+is_joystick () {
+    udevadm info --name "$1" | grep ID_INPUT_JOYSTICK &> /dev/null
+}
+is_joystick! () { is_joystick "$1" || { echo "$1 is not a joystick."; exit; }; }
+is () { [[ ${1,,} =~ yes|on|true|enabled || $1 -gt 0 ]]; }
+debug_print () { if [[ "$REJOY_DEBUG" ]]; then echo "DEBUG: $*"; fi }
+reply_ok ()    { true; }
+reply_fail ()  { true; }
+
+get_map () {
+    udevprop () { udevadm info -q property -n $1 | grep $2 | cut -f2 -d= ; }
+    local uuid="$(udevprop $1 ID_VENDOR_ID)$(udevprop $1 ID_MODEL_ID)"
+    # Check included maps
+    if [[ -f "$rejoy_path/maps/$uuid.cfg" ]]; then
+        echo "$rejoy_path/maps/$uuid.cfg"
+    # Check user maps
+    elif [[ -f "/etc/rejoy/maps/$uuid.cfg" ]]; then
+        echo "/etc/rejoy/maps/$uuid.cfg"
+    # Create a new user map
+    else
+        echo "$rejoy_path/maps/template.cfg"
+    fi
+}
+
+init_rejoyd () {
+    debug_print "Initializing rejoyd."
+    mkdir -p /run/rejoy/joys /dev/input/rejoy
+    mv /var/log/rejoy /var/log/rejoy/last &> /dev/null
+    exec &> /var/log/rejoy
+    mkfifo -m 666 /run/rejoy/control
+    mkfifo -m 644 /run/rejoy/reply
+    [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
+    cp -r "/etc/rejoy/opts" /run/rejoy/opts
+    for dev in /dev/input/js* /dev/input/event*; do
+        add_joystick $(basename $dev)
+    done
+}
+
+end_rejoyd () {
+    debug_print "Terminating rejoyd."
+    for dev in /run/rejoy/joys/*; do
+        if [[ -f "$dev/pid" ]]; then
+            kill $(<$dev/pid)
+            wait $(<$dev/pid)
+        fi
+        mv $(readlink -f $dev/device) /dev/input
+    done
+    reply_ok
+    rm -rf /run/rejoy
+    exit 0
+}
+
+add_joystick () {
+    is_joystick /dev/input/$1 || return 0
+    debug_print "Adding $1"
+    mkdir -p /dev/input/rejoy /run/rejoy/joys/$1
+    mv /dev/input/$1 /dev/input/rejoy
+    ln -s /dev/input/rejoy/$1 /run/rejoy/joys/$1/device
+    [[ "$1" == event* ]] && start_xbd $1
+    resort_devices
+    reply_ok
+}
+
+rm_joystick () {
+    [[ -e /dev/input/rejoy/$1 ]] || return 0
+    debug_print "Removing $1"
+    kill -9 $(</run/rejoy/joys/$1/pid)
+    wait $(</run/rejoy/joys/$1/pid)
+    rm $(readlink -f /run/rejoy/joys/$1/device)
+    rm -r /run/rejoy/joys/$1
+    resort_devices
+    reply_ok
+}
+
+set_defaults () {
+    mkdir -p /etc/rejoy/opts
+    for opt in "$@"; do
+        debug_print "Default option: $opt"
+        val="$(echo $opt | cut -f2 -d=)"; opt="$(echo $opt | cut -f1 -d=)"
+        if is $val && [[ -f "$rejoy_path/opts/$opt.cfg" ]]; then
+            ln -sf "$rejoy_path/opts/$opt.cfg" /etc/rejoy/opts/
+        else rm "/etc/rejoy/opts/$opt.cfg" &> /dev/null; fi
+    done
+    reply_ok
+}
+
+set_options () {
+    for opt in "$@"; do
+        debug_print "Option: $opt"
+        val="$(echo $opt | cut -f2 -d=)"; opt="$(echo $opt | cut -f1 -d=)"
+        if is $val && [[ -f "$rejoy_path/opts/$opt.cfg" ]]; then
+            ln -sf "$rejoy_path/opts/$opt.cfg" /run/rejoy/opts/
+        else rm "/run/rejoy/opts/$opt.cfg" &> /dev/null; fi
+    done
+    reload_xbd
+    reply_ok
+}
+
+reset_options () {
+    [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
+    cp -r "/etc/rejoy/opts" /run/rejoy/opts
+    reload_xbd
+    reply_ok
+}
+
+reload_xbd () {
+    for dev in /run/rejoy/joys/event*; do
+        kill $(<"$dev/pid")
+        wait $(<"$dev/pid")
+        start_xbd $(basename $dev)
+    done
+    resort_devices
+    reply_ok
+}
+
+start_xbd () {
+    output=(--silent --quiet)
+    [[ "$rejoy_debug" ]] && output=(--verbose --debug)
+    configs=(--config "$(get_map /dev/input/rejoy/$1)")
+    for opt in /run/rejoy/opts/*; do configs+=(--config "$opt"); done
+    xboxdrv "${output[@]}" --evdev "/dev/input/rejoy/$1" "${configs[@]}" &
+    echo $! > /run/rejoy/joys/$1/pid
+}
+
+# Moves devices into lower empty slots if possible.
+resort_devices () {
+    get_num () { echo "$1" | egrep -o '[0-9]+$'; }
+    sleep 0.25
+    cd /dev/input
+    targs=()
+    is "$resort_event" && targs+=(event)
+    is "$resort_js" && targs+=(js)
+    for t in ${targs[@]}; do
+        for d in $t*; do
+            num="$(get_num "$d")"
+            targ=""
+            while [[ "$num" -gt 0 ]]; do
+                ((num -= 1))
+                if [[ ! -e "$t$num" ]]; then
+                    targ="$num"
+                fi
+            done
+            [[ -n "$targ" ]] && mv "$d" "$t$targ"
+        done
+    done
+    cd - &> /dev/null
+}
