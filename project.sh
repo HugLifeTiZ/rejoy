@@ -23,14 +23,14 @@ install)
     export SIMPLE_BACKUP_SUFFIX="off"
     install -d "$path" "$path/opts" "$path/maps" "$bin_dir" \
      /etc/rejoy /etc/rejoy/opts /etc/rejoy/maps
-    install -m0755 rejoyd "$bin_dir/rejoyd"
-    install -m0755 rejoyctl "$bin_dir/rejoyctl"
-    install -m0644 funcs "$path"
+    install -m0755 src/rejoyd "$bin_dir/rejoyd"
+    install -m0755 src/rejoyctl "$bin_dir/rejoyctl"
+    install -m0644 src/funcs "$path"
     install -m0644 opts/* "$path/opts"
     install -m0644 maps/* "$path/maps"
-    install -m0644 profile /etc/profile.d/xboxdrv-sdl2.sh
-    install -m0644 udev.rules /etc/udev/rules.d/99-rejoy.rules
-    install -m0644 rejoyd.service /etc/systemd/system/
+    install -m0644 data/profile.sh /etc/profile.d/xboxdrv-sdl2.sh
+    install -m0644 data/udev.rules /etc/udev/rules.d/99-rejoy.rules
+    install -m0644 data/rejoyd.service /etc/systemd/system/
     ;;
 uninstall)
     rm -r "$path/share/rejoy"
