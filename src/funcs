@@ -6,12 +6,10 @@ resort_js=1
 resort_event=0
 
 # Utility functions.
-is_joystick () {
-    udevadm info --name "$1" | grep ID_INPUT_JOYSTICK &> /dev/null
-}
-is_joystick! () { is_joystick "$1" || { echo "$1 is not a joystick."; exit; }; }
 is () { [[ ${1,,} =~ yes|on|true|enabled || $1 -gt 0 ]]; }
 debug_print () { if [[ "$REJOY_DEBUG" ]]; then echo "DEBUG: $*"; fi }
+is_joystick () { udevadm info -n "$1" 2> /dev/null | grep ID_INPUT_JOYSTICK; }
+is_joystick! () { is_joystick "$1" || { echo "$1 is not a joystick."; exit; }; }
 reply_ok ()    { true; }
 reply_fail ()  { true; }
 
@@ -53,6 +51,7 @@ end_rejoyd () {
         fi
         mv $(readlink -f $dev/device) /dev/input
     done
+    clean_dead_devices
     reply_ok
     rm -rf /run/rejoy
     exit 0
@@ -76,6 +75,7 @@ rm_joystick () {
     wait $(</run/rejoy/joys/$1/pid)
     rm $(readlink -f /run/rejoy/joys/$1/device)
     rm -r /run/rejoy/joys/$1
+    clean_dead_devices
     resort_devices
     reply_ok
 }
@@ -115,8 +115,9 @@ reload_xbd () {
     for dev in /run/rejoy/joys/event*; do
         kill $(<"$dev/pid")
         wait $(<"$dev/pid")
-        start_xbd $(basename $dev)
     done
+    clean_dead_devices
+    for dev in /run/rejoy/joys/event*; do start_xbd $(basename $dev); done
     resort_devices
     reply_ok
 }
@@ -128,6 +129,13 @@ start_xbd () {
     for opt in /run/rejoy/opts/*; do configs+=(--config "$opt"); done
     xboxdrv "${output[@]}" --evdev "/dev/input/rejoy/$1" "${configs[@]}" &
     echo $! > /run/rejoy/joys/$1/pid
+}
+
+# Sometimes dead devices get left behind. This cleans them up.
+clean_dead_devices () {
+    for dev in /dev/input/js* /dev/input/event*; do
+        [[ "$(udevadm info -n $dev 2> /dev/null)" ]] || rm $dev
+    done
 }
 
 # Moves devices into lower empty slots if possible.
