@@ -3,7 +3,7 @@
 
 # Default values.
 resort_js=1
-resort_event=0
+resort_event=1
 
 # Utility functions.
 is () { [[ ${1,,} =~ yes|on|true|enabled || $1 -gt 0 ]]; }
