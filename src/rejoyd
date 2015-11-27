@@ -20,14 +20,13 @@ init_rejoyd
 while read -a cmd </run/rejoy/control; do
     echo "Received command ${cmd[@]}."
     case ${cmd[0]} in
-    add)       add_joystick ${cmd[1]} ;;
-    rm)        rm_joystick ${cmd[1]} ;;
+    add)       add_joysticks ;;
+    rm)        rm_joysticks ;;
     options)   set_options "${cmd[@]:1}" ;;
     defaults)  set_defaults "${cmd[@]:1}" ;;
     reset)     reset_options ;;
-    OK|FAIL)   echo "Received own ${cmd[0]} reply. Not using rejoyctl? BAD!" ;;
     exit)      break ;;
-    *)         echo "Unrecognized command."; reply_fail ;;
+    *)         echo "Unrecognized command." ;;
     esac
 done
 end_rejoyd

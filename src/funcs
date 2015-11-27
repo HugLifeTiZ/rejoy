@@ -61,24 +61,7 @@ end_rejoyd () {
     exit 0
 }
 
-add_joystick () { add_all_joysticks ; }
-rm_joystick () { rm_all_joysticks ; }
-
-add_one_joystick () {
-    is_joystick /dev/input/$1 || {
-        echo "$(dev_name /dev/input/$1) is not a joystick" ; return 0 ; }
-    is_virtual /dev/input/$1 && {
-        echo "$1 is an xboxdrv joystick" ; return 0 ; }
-    echo "Adding $(dev_name /dev/input/$1)"
-    mkdir -p /dev/input/rejoy /run/rejoy/joys/$1
-    mv /dev/input/$1 /dev/input/rejoy
-    ln -s /dev/input/rejoy/$1 /run/rejoy/joys/$1/device
-    [[ "$1" == event* ]] && start_xbd $1
-    resort_devices &
-    reply_ok
-}
-
-add_all_joysticks () {
+add_joysticks () {
     for dev in /dev/input/event*; do
         if is_joystick $dev && ! is_virtual $dev; then
             echo "Adding $(dev_name $dev)"
@@ -93,19 +76,7 @@ add_all_joysticks () {
     reply_ok
 }
 
-rm_one_joystick () {
-    [[ -e /dev/input/rejoy/$1 ]] || return 0
-    echo "Removing $(dev_name /dev/input/rejoy/$1)"
-    kill -9 $(</run/rejoy/joys/$1/pid)
-    wait $(</run/rejoy/joys/$1/pid)
-    rm $(readlink -f /run/rejoy/joys/$1/device)
-    rm -r /run/rejoy/joys/$1
-    clean_dead_devices
-    #resort_devices
-    reply_ok
-}
-
-rm_all_joysticks () {
+rm_joysticks () {
     for dev in /dev/input/rejoy/event*; do
         if [[ ! "$(udevadm info -n $dev 2> /dev/null)" ]]; then
             echo "$(basename $dev) has been unplugged; shutting down xboxdrv."
@@ -183,33 +154,6 @@ clean_dead_devices () {
             rm $dev
         fi
     done
-}
-
-# Moves devices into lower empty slots if possible.
-resort_devices () {
-    sleep 0.25
-    cd /dev/input
-    targs=()
-    is "$resort_event" && targs+=(event)
-    is "$resort_js" && targs+=(js)
-    for t in ${targs[@]}; do
-        echo "Resorting $t devices."
-        for d in $t*; do
-            num="$(get_num "$d")"
-            targ=""
-            while [[ "$num" -gt 0 ]]; do
-                ((num -= 1))
-                if [[ ! -e "$t$num" ]]; then
-                    targ="$num"
-                fi
-            done
-            if [[ "$targ" ]]; then
-                echo "Moving $d to $t$targ."
-                mv "$d" "$t$targ"
-            fi
-        done
-    done
-    cd - &> /dev/null
 }
 
 resort_devices () {
