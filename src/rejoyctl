@@ -1,4 +1,4 @@
 #!/bin/bash
 # Communicates with rejoyd and blocks until the thing it's doing succeeds.
-{ [[ -e /run/rejoy/control ]] && pgrep rejoyd &> /dev/null } || exit 0
+{ [[ -e /run/rejoy/control ]] && pgrep rejoyd &> /dev/null ; } || exit 0
 echo "$@" > /run/rejoy/control
