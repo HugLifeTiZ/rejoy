@@ -12,8 +12,6 @@ is_joystick () { [[ "$(udevprop $1 ID_INPUT_JOYSTICK)" ]] ; }
 is_virtual () { [[ "$(udevprop $1 DEVPATH)" == *virtual* ]] ; }
 dev_name () { 
     d="$(readlink -f $1)" ; echo "$(basename $d): $(udevprop $d ID_MODEL)" ; }
-reply_ok () { true; }    # TODO: Good way to communicate with rejoyctl
-reply_fail () { true; }
 
 get_map () {
     local uuid="$(udevprop $1 ID_VENDOR_ID)$(udevprop $1 ID_MODEL_ID)"
@@ -36,7 +34,6 @@ init_rejoyd () {
     echo "Initializing rejoyd."
     mkdir -p /run/rejoy/joys /dev/input/rejoy
     mkfifo -m 666 /run/rejoy/control
-    mkfifo -m 644 /run/rejoy/reply
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
     add_joysticks
@@ -53,7 +50,6 @@ end_rejoyd () {
         mv $(readlink -f $dev/device) /dev/input
     done
     clean_dead_devices
-    reply_ok
     rm -rf /run/rejoy
     exit 0
 }
@@ -70,7 +66,6 @@ add_joysticks () {
         fi
     done
     resort_devices
-    reply_ok
 }
 
 rm_joysticks () {
@@ -85,7 +80,6 @@ rm_joysticks () {
         fi
     done
     clean_dead_devices
-    reply_ok
 }
 
 set_defaults () {
@@ -97,7 +91,6 @@ set_defaults () {
             ln -sf "$rejoy_path/opts/$opt.cfg" /etc/rejoy/opts/
         else rm "/etc/rejoy/opts/$opt.cfg" &> /dev/null; fi
     done
-    reply_ok
 }
 
 set_options () {
@@ -109,7 +102,6 @@ set_options () {
         else rm "/run/rejoy/opts/$opt.cfg" &> /dev/null; fi
     done
     reload_xbd
-    reply_ok
 }
 
 reset_options () {
@@ -117,7 +109,6 @@ reset_options () {
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
     reload_xbd
-    reply_ok
 }
 
 reload_xbd () {
@@ -130,7 +121,6 @@ reload_xbd () {
     clean_dead_devices
     for dev in /run/rejoy/joys/event*; do start_xbd $(basename $dev); done
     resort_devices
-    reply_ok
 }
 
 start_xbd () {
