@@ -69,7 +69,7 @@ add_joysticks () {
             start_xbd $dev
         fi
     done
-    resort_devices &
+    resort_devices
     reply_ok
 }
 
@@ -129,7 +129,7 @@ reload_xbd () {
     done
     clean_dead_devices
     for dev in /run/rejoy/joys/event*; do start_xbd $(basename $dev); done
-    resort_devices &
+    resort_devices
     reply_ok
 }
 
@@ -144,6 +144,7 @@ start_xbd () {
 
 # Sometimes dead devices get left behind. This cleans them up.
 clean_dead_devices () {
+    sleep 0.25
     echo "Cleaning dead devices."
     for dev in /dev/input/js* /dev/input/event*; do
         if [[ -z "$(udevadm info -n $dev 2> /dev/null)" ]]; then
