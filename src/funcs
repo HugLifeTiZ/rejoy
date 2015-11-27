@@ -127,7 +127,7 @@ start_xbd () {
     local cmd=(xboxdrv --silent --quiet --evdev "/dev/input/rejoy/$1")
     cmd+=(--config "$(get_map /dev/input/rejoy/$1)")
     for opt in /run/rejoy/opts/*; do cmd+=(--config "$opt"); done
-    echo "Starting xboxdrv for $(dev_name $1) - ${cmd[@]}"
+    echo "Starting xboxdrv for $(dev_name /dev/input/rejoy/$1) - ${cmd[@]}"
     "${cmd[@]}" &
     echo $! > /run/rejoy/joys/$1/pid
 }
