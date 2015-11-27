@@ -14,10 +14,12 @@ for rejoy_dir in "$rejoy_path" "$REJOY_PATH" "$this_dir" \
     break
 fi; done; unset rejoy_dir
 source "$rejoy_path/funcs"
-shopt -s nullglob
+set +o monitor; shopt -s nullglob
 
 init_rejoyd
-while read -a cmd </run/rejoy/control; do case ${cmd[0]} in
+while read -a cmd </run/rejoy/control; do
+    echo "Received command ${cmd[@]}."
+    case ${cmd[0]} in
     add)       add_joystick ${cmd[1]} ;;
     rm)        rm_joystick ${cmd[1]} ;;
     options)   set_options "${cmd[@]:1}" ;;
@@ -25,6 +27,7 @@ while read -a cmd </run/rejoy/control; do case ${cmd[0]} in
     reset)     reset_options ;;
     OK|FAIL)   echo "Received own ${cmd[0]} reply. Not using rejoyctl? BAD!" ;;
     exit)      break ;;
-    *)         echo "Unrecognized command: ${cmd[@]}"; reply_fail ;;
-esac; done
+    *)         echo "Unrecognized command."; reply_fail ;;
+    esac
+done
 end_rejoyd

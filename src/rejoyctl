@@ -1,6 +1,6 @@
 #!/bin/bash
 # Communicates with rejoyd and blocks until the thing it's doing succeeds.
-if [[ ! -e /run/rejoy/control ]] && (! pgrep rejoyd); then
+if [[ ! -e /run/rejoy/control ]] || (! pgrep rejoyd &> /dev/null); then
     echo "rejoyd is not running; doing nothing."; exit 0
 fi
 #dd if=/run/rejoy/reply iflag=nonblock of=/dev/null &> /dev/null
