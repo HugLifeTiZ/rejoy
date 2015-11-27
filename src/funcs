@@ -39,7 +39,7 @@ init_rejoyd () {
     mkfifo -m 644 /run/rejoy/reply
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
-    add_all_joysticks
+    add_joysticks
 }
 
 end_rejoyd () {
