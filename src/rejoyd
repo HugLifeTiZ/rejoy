@@ -17,7 +17,7 @@ source "$rejoy_path/funcs"
 set +o monitor; shopt -s nullglob
 
 init_rejoyd
-while read -a cmd </run/rejoy/control; do
+while read -a cmd < /run/rejoy/control; do
     echo "Received command ${cmd[@]}."
     case ${cmd[0]} in
     add)       add_joysticks ;;
