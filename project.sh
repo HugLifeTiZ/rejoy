@@ -15,7 +15,7 @@ exit_usage () {
 op="$1"; path="$2"
 
 [[ "$path" ]] || path="/usr/local/share/rejoy"
-bin_dir="$(readlink -f "$path/../../bin")";
+bin_dir="$(dirname "$(dirname "$path")")/bin"
 
 cd "$(dirname "$(readlink -f "$0")")"
 case "$1" in
@@ -33,7 +33,7 @@ install)
     install -m0644 data/rejoyd.service /etc/systemd/system/
     ;;
 uninstall)
-    rm -r "$path/share/rejoy"
+    rm -r "$path"
     rm "$bin_dir/rejoyd" "$bin_dir/rejoyctl" /etc/udev/rules.d/99-rejoy.rules \
      /etc/profile.d/xboxdrv-sdl2.sh /etc/systemd/system/rejoyd.service
     ;;
