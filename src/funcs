@@ -7,21 +7,113 @@ resort_event=1
 
 # Utility functions.
 is () { [[ ${1,,} =~ yes|on|true|enabled || $1 -gt 0 ]]; }
-udevprop () { udevadm info -n $1 2> /dev/null | grep "E: $2=" | cut -f2 -d= ; }
-is_joystick () { [[ "$(udevprop $1 ID_INPUT_JOYSTICK)" ]] ; }
-is_virtual () { [[ "$(udevprop $1 DEVPATH)" == *virtual* ]] ; }
-dev_name () { 
-    d="$(readlink -f $1)" ; echo "$(basename $d): $(udevprop $d ID_MODEL)" ; }
+udevprop () { udevadm info -n $1 2> /dev/null | grep "E: $2=" | cut -f2 -d=; }
+is_joystick () { [[ "$(udevprop $1 ID_INPUT_JOYSTICK)" ]]; }
+is_virtual () { [[ "$(udevprop $1 DEVPATH)" == *virtual* ]]; }
+dev_name () {
+    d="$(readlink -f $1)"; echo "$(basename $d): $(udevprop_walk $d product)";
+}
+reply () {
+    {
+        echo "result=$1"
+        shift
+        echo "output=\"$*\""
+    } > /run/rejoy/control
+}
+
+# Gets the first non-null occurrence of desired property in the hierarchy.
+udevprop_walk () {
+    udevadm info -a -n $1 2> /dev/null | sed -nr \
+     -e "s:^.*ATTRS\\{$2\\}==\"(.+)\".*$:\\1:p" \
+     -e "s:^.*$2==\"(.+)\".*$:\\1:p" | head -1
+}
+
+# Adapted from joystickguid.rb by taktaktaktaktaktaktaktaktaktak
+dev_guid () { ruby -- - $1 <<EOF
+    EVIOCGID = 0x80084502; input = [0,0,0,0].pack('SSSS'); success = 0
+    File.open(ARGV[0], File::RDONLY|File::NONBLOCK) { |file|
+        success = file.ioctl(EVIOCGID, input) }
+    bustype, vendor, product, version = input.unpack('SSSS')
+    if(0 == success && 0 != vendor && 0 != product && 0 != version) then
+        puts format('%02x%02x0000%02x%02x0000%02x%02x0000%02x%02x0000',
+         bustype & 0xFF, bustype >> 8, vendor & 0xFF, vendor >> 8,
+         product & 0xFF, product >> 8, version & 0xFF, version >> 8);
+    end
+EOF
+}
+
+dev_events () {
+    local tmp=$(mktemp -t rejoy.XXXXXX);
+    evtest $1 &> "$tmp" &
+    sleep 0.1; kill $!
+    for e in $(sed -nr 's:^.*nt code ([0-9]+).*$:\1:p' "$tmp"); do
+        printf '%03d ' $((10#$e))
+    done; echo; rm "$tmp"
+}
+
+ev_for () {
+    { for e in $(sed -nr 's:^.*_#([0-9]+)\s+=\s+.*'"$1"'\s*$:\1:pi' "$2"); do
+        printf '%03d ' $((10#$e))
+    done; echo; } | sed -r 's/\s+$//' | sed -r 's/\s+/\|/g'
+}
+
+map_events () {
+    declare -Ag map
+    map[a]=$(ev_for a "$1"); map[b]=$(ev_for b "$1")
+    map[x]=$(ev_for a "$1"); map[y]=$(ev_for y "$1")
+    map[lb]=$(ev_for lb "$1"); map[rb]=$(ev_for rb "$1")
+    map[lt]=$(ev_for lt "$1"); map[rt]=$(ev_for rt "$1")
+    map[tl]=$(ev_for tl "$1"); map[tr]=$(ev_for tr "$1")
+    map[start]=$(ev_for start "$1"); map[back]=$(ev_for back "$1")
+    map[guide]=$(ev_for guide "$1")
+    map[x1]=$(ev_for x1 "$1"); map[y1]=$(ev_for y1 "$1")
+    map[x2]=$(ev_for x2 "$1"); map[y2]=$(ev_for y2 "$1")
+    map[dpad_x]=$(ev_for dpad_x "$1"); map[dpad_y]=$(ev_for dpad_y "$1")
+    map[du]=$(ev_for du "$1"); map[dd]=$(ev_for dd "$1")
+    map[dl]=$(ev_for dl "$1"); map[dr]=$(ev_for dr "$1")
+}
+
+is_match () {
+    for e in a b x y lb rb lt rt tl tr start back guide x1 y1 x2 y2; do
+        [[ "$dev_evs" =~ ${map[$e]} ]] || return 1; done
+    [[ "$dev_evs" =~ ${map[dpad_x]} ]] && \
+     [[ "$dev_evs" =~ ${map[dpad_y]} ]] && \
+     return 0
+    [[ "$dev_evs" =~ ${map[du]} ]] && [[ "$dev_evs" =~ ${map[dd]} ]] && \
+     [[ "$dev_evs" =~ ${map[dl]} ]] && [[ "$dev_evs" =~ ${map[dr]} ]] && \
+     return 0
+    return 1
+}
+
+find_map_match () {
+    dev_evs=$(dev_events "$1")
+    for cfg in $(find "$rejoy_path/maps/" -name "${drv}_*.cfg") \
+     $(find "/etc/rejoy/maps/" -type f -name "${drv}_*.cfg"); do
+        map_events "$cfg"
+        if is_match; then echo "$cfg"; break; fi
+    done
+    unset map dev_evs
+}
 
 get_map () {
-    local uuid="$(udevprop $1 ID_VENDOR_ID)$(udevprop $1 ID_MODEL_ID)"
-    # Check included maps
-    if [[ -f "$rejoy_path/maps/$uuid.cfg" ]]; then
-        echo "$rejoy_path/maps/$uuid.cfg"
+    local guid="$(dev_guid $1)"
     # Check user maps
-    elif [[ -f "/etc/rejoy/maps/$uuid.cfg" ]]; then
-        echo "/etc/rejoy/maps/$uuid.cfg"
-    # Create a new user map
+    if [[ -f "/etc/rejoy/maps/$guid.cfg" ]]; then
+        echo "/etc/rejoy/maps/$guid.cfg"; return
+    # Check included maps
+    elif [[ -f "$rejoy_path/maps/$guid.cfg" ]]; then
+        echo "$rejoy_path/maps/$guid.cfg"; return
+    fi
+    # Find a preset.
+    drv="$(udevprop_walk $1 DRIVERS)"
+    if [[ "$drv" == "xpad" ]]; then
+        ln -s "$rejoy_path/maps/xpad_all.cfg" "/etc/rejoy/maps/$guid.cfg"
+        echo "/etc/rejoy/maps/$guid.cfg"; return
+    fi
+    local map=$(readlink -f "$(find_map_match $1)")
+    if [[ "$map" ]]; then
+        ln -s "$map" "/etc/rejoy/maps/$guid.cfg"
+        echo "/etc/rejoy/maps/$guid.cfg"
     else
         # TODO: Map generation program.
         echo "$rejoy_path/maps/template.cfg"
