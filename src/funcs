@@ -29,13 +29,17 @@ get_map () {
 }
 
 init_rejoyd () {
-    mv /var/log/rejoy /var/log/rejoy/last &> /dev/null
+    mv /var/log/rejoy /var/log/rejoy-last &> /dev/null
     exec &> /var/log/rejoy
     echo "Initializing rejoyd."
     mkdir -p /run/rejoy/joys /dev/input/rejoy
-    mkfifo -m 666 /run/rejoy/control
+    touch /run/rejoy/control
+    chmod a+rwx /run/rejoy
+    chmod a+rw /run/rejoy/control
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
+    [[ -e /etc/rejoy/conf ]] && . /etc/rejoy/conf
+    [[ -x "$xboxdrv_bin" ]] || xboxdrv_bin=$(which xboxdrv)
     add_joysticks
 }
 
@@ -50,6 +54,7 @@ end_rejoyd () {
         mv $(readlink -f $dev/device) /dev/input
     done
     clean_dead_devices
+    reply 0 "RejoyD shut down."
     rm -rf /run/rejoy
     exit 0
 }
@@ -66,6 +71,7 @@ add_joysticks () {
         fi
     done
     resort_devices
+    reply 0
 }
 
 rm_joysticks () {
@@ -80,6 +86,7 @@ rm_joysticks () {
         fi
     done
     clean_dead_devices
+    reply 0
 }
 
 set_defaults () {
@@ -91,6 +98,7 @@ set_defaults () {
             ln -sf "$rejoy_path/opts/$opt.cfg" /etc/rejoy/opts/
         else rm "/etc/rejoy/opts/$opt.cfg" &> /dev/null; fi
     done
+    reply 0
 }
 
 set_options () {
@@ -102,6 +110,7 @@ set_options () {
         else rm "/run/rejoy/opts/$opt.cfg" &> /dev/null; fi
     done
     reload_xbd
+    reply 0
 }
 
 reset_options () {
@@ -109,6 +118,7 @@ reset_options () {
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
     reload_xbd
+    reply 0
 }
 
 reload_xbd () {
@@ -124,7 +134,7 @@ reload_xbd () {
 }
 
 start_xbd () {
-    local cmd=(xboxdrv --silent --quiet --evdev "/dev/input/rejoy/$1")
+    local cmd=("$xboxdrv_bin" --silent --quiet --evdev "/dev/input/rejoy/$1")
     cmd+=(--config "$(get_map /dev/input/rejoy/$1)")
     for opt in /run/rejoy/opts/*; do cmd+=(--config "$opt"); done
     echo "Starting xboxdrv for $(dev_name /dev/input/rejoy/$1) - ${cmd[@]}"

@@ -10,14 +10,14 @@ this_dir="$(dirname "$rejoy_bin")"
 for rejoy_dir in "$rejoy_path" "$REJOY_PATH" "$this_dir" \
  "$(readlink -f "$this_dir/../share/rejoy")" "$XDG_DATA_HOME/rejoy" \
  "$HOME/.local/share/rejoy"; do if [[ -f "$rejoy_dir/funcs" ]]; then
-    export rejoy_path="$rejoy_dir"
-    break
+    export rejoy_path="$rejoy_dir"; break
 fi; done; unset rejoy_dir
 source "$rejoy_path/funcs"
 set +o monitor; shopt -s nullglob
 
 init_rejoyd
-while read -a cmd < /run/rejoy/control; do
+while inotifywait -qq -e close_write /run/rejoy/control; do
+    source /run/rejoy/control
     echo "Received command ${cmd[@]}."
     case ${cmd[0]} in
     add)       add_joysticks ;;

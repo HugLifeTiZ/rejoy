@@ -1,4 +1,14 @@
 #!/bin/bash
 # Communicates with rejoyd and blocks until the thing it's doing succeeds.
 { [[ -e /run/rejoy/control ]] && pgrep rejoyd &> /dev/null ; } || exit 0
-echo "$@" > /run/rejoy/control
+
+# If someone else is making a request, wait for it to complete.
+[[ -e /run/rejoy/lock ]] && inotifywait -qq -e delete_self /run/rejoy/lock
+
+touch /run/rejoy/lock
+echo "cmd=($*)" > /run/rejoy/control
+inotifywait -qq -e close_write /run/rejoy/control
+source /run/rejoy/control
+echo $output
+rm /run/rejoy/lock
+exit $result
