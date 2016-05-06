@@ -247,15 +247,18 @@ clean_dead_devices () {
 }
 
 resort_devices () {
-    sleep 0.25
-    resort_virt_event
-    resort_js
+    is $resort_sleep && sleep 0.25
+    case $resort_event in
+        1|soft) resort_virt_soft ;;
+        2|hard) resort_virt_hard ;;
+    esac
+    is $resort_js && resort_jsdevs
 }
 
 # This function moves virtual event devices into the event slots of the
 # joysticks that they are using. It does not touch non-virtual devices at all!
 # Resorting non-virtual devices causes weird shit to happen.
-resort_virt_event () {
+resort_virt_soft () {
     echo "Resorting virtual event devices."
     local virts=()
     local devs=()
@@ -275,8 +278,37 @@ resort_virt_event () {
     done
 }
 
+# Set resort_event to 2 to use this mode. It works just like the js mode.
+# Gaps in the event numbers will cause issues with some software.
+resort_virt_hard () {
+    echo "Resorting virtual event devices."
+    cd /dev/input
+    local virts=()
+    local devs=()
+    for dev in /dev/input/event*; do if is_virtual $dev; then
+        virts+=("$(basename $dev)")
+    fi; done
+    for dev in /dev/input/rejoy/event*; do devs+=("$(basename $dev)"); done
+    for virt in ${virts[@]}; do
+        echo "Resorting virt $virt"
+        local num="$(echo "$virt" | egrep -o '[0-9]+$')"
+        local targ=""
+        while [[ "$num" -gt 0 ]]; do
+            ((num -= 1))
+            if [[ ! -e "event$num" ]]; then
+                targ="$num"
+            fi
+        done
+        if [[ "$targ" ]]; then
+            echo "Moving $virt to event$targ."
+            mv "$virt" "event$targ"
+        fi
+    done
+    cd - &> /dev/null
+}
+
 # This function just makes sure all js devices start from 0.
-resort_js () {
+resort_jsdevs () {
     echo "Resorting js devices."
     cd /dev/input
     for d in js*; do
