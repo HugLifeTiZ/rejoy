@@ -31,10 +31,18 @@ install)
     install -m0644 data/profile.sh /etc/profile.d/xboxdrv-sdl2.sh
     install -m0644 data/udev.rules /etc/udev/rules.d/99-rejoy.rules
     install -m0644 data/rejoyd.service /etc/systemd/system/
+    # Recommended default options.
+    for opt in mimic-xpad invert-y deadzone-6000; do
+        ln -sf "$path/opts/$opt.cfg" /etc/rejoy/opts/$opt.cfg; done
+    systemctl daemon-reload
     ;;
 uninstall)
     rm -r "$path"
     rm "$bin_dir/rejoyd" "$bin_dir/rejoyctl" /etc/udev/rules.d/99-rejoy.rules \
      /etc/profile.d/xboxdrv-sdl2.sh /etc/systemd/system/rejoyd.service
+    ;;
+reinstall)
+    "$0" uninstall
+    "$0" install
     ;;
 esac
