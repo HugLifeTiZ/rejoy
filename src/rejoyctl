@@ -9,6 +9,6 @@ touch /run/rejoy/lock
 echo "cmd=($*)" > /run/rejoy/control
 inotifywait -qq -e close_write /run/rejoy/control
 source /run/rejoy/control
-echo $output
+[[ "$output" ]] && echo $output
 rm /run/rejoy/lock
 exit $result
