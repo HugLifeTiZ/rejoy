@@ -5,7 +5,7 @@
 resort_js=1
 resort_event=1
 use_dummy=1
-dummy_device=/dev/input/event0
+dummy_device=$(find /dev/input/by-path -type l | egrep -v 'kbd|mouse' | head -1)
 
 # Utility functions.
 is () { [[ ${1,,} =~ yes|on|true|enabled || $1 -gt 0 ]]; }
@@ -313,7 +313,7 @@ resort_virt_soft () {
 }
 
 # Set resort_event to 2 to use this mode. It works just like the js mode.
-# Gaps in the event numbers will cause issues with some software.
+# Gaps in the event numbers will cause issues with some software. UNITY.
 resort_virt_hard () {
     echo "Resorting virtual event devices."
     cd /dev/input
