@@ -2,9 +2,13 @@
 # ReJoy helper functions.
 
 # Default values.
+user=gamepad
+group=gamepad
+move_devices=0
+delete_js=0
 resort_js=1
 resort_event=1
-use_dummy=1
+use_dummy=0
 dummy_device=$(find /dev/input/by-path -type l | egrep -v 'kbd|mouse' | head -1)
 
 # Utility functions.
@@ -15,6 +19,10 @@ is_virtual () { [[ "$(udevprop $1 DEVPATH)" == *virtual* ]]; }
 dev_name () {
     d="$(readlink -f $1)"; echo "$(basename $d): $(udevprop_walk $d product)";
 }
+device () { readlink -f /run/rejoy/joys/$1/device; }
+in_rejoy () { [[ -d /run/rejoy/joys/$(basename $1) ]]; }
+should_add () { is_joystick $1 && ! is_virtual $1 && ! in_rejoy $1; }
+
 reply () {
     {
         echo "result=$1"
@@ -122,17 +130,33 @@ get_map () {
     fi
 }
 
+check_user () {
+    # If regular user and not target user, do this first!
+    [[ $(id -u) -ge 1000 ]] && exec sudo "$rejoy_bin" $opts
+    
+    # If configured to run as dedicated user, set up what it needs.
+    if [[ $(id -u) -eq 0 ]] && \
+     [[ "$user" != "root" ]] && [[ "$group" != "root" ]]; then
+        echo "Changing user to $user:$group"
+        mkdir -p /run/rejoy /var/log/rejoy
+        chown -R $user:$group /run/rejoy /var/log/rejoy
+        setfacl -m u:gamepad:rwx,g:gamepad:rwx /dev/input
+        setfacl -m u:gamepad:rw,g:gamepad:rw /dev/uinput
+        exec sudo -u "$user" -g "$group" "$rejoy_bin" $opts
+    fi
+}
+
 init_rejoyd () {
-    mv /var/log/rejoy /var/log/rejoy-last &> /dev/null
-    exec &> /var/log/rejoy
-    echo "Initializing rejoyd."
-    mkdir -p /run/rejoy/joys /dev/input/rejoy
+    mv /var/log/rejoy/current /var/log/rejoy/last &> /dev/null
+    echo "Initializing rejoyd. Check /var/log/rejoy/current for messages."
+    is $REJOY_DEBUG || exec &> /var/log/rejoy/current
+    mkdir -p /run/rejoy/joys /run/rejoy/lock
+    is $move_devices && mkdir -p /dev/input/rejoy
     touch /run/rejoy/control
-    chmod a+rwx /run/rejoy
+    chmod a+rwx /run/rejoy/lock
     chmod a+rw /run/rejoy/control
     [[ -d /run/rejoy/opts ]] && rm -r /run/rejoy/opts
     cp -r "/etc/rejoy/opts" /run/rejoy/opts
-    [[ -e /etc/rejoy/conf ]] && . /etc/rejoy/conf
     [[ -x "$xboxdrv_bin" ]] || xboxdrv_bin=$(which xboxdrv)
     add_joysticks
 }
@@ -145,47 +169,55 @@ end_rejoyd () {
             kill $(<$dev/pid)
             wait $(<$dev/pid)
         fi
-        mv $(readlink -f $dev/device) /dev/input
+        is $move_devices && mv $(readlink -f $dev/device) /dev/input
     done
     kill_dummy
     clean_dead_devices
     reply 0 "RejoyD shut down."
-    rm -rf /run/rejoy
+    rm -rf /run/rejoy/*
     exit 0
 }
 
 add_joysticks () {
     kill_dummy
     for dev in /dev/input/event*; do
-        if is_joystick $dev && ! is_virtual $dev; then
+        if should_add $dev; then
             echo "Adding $(dev_name $dev)"
             dev="$(basename $dev)"
-            mkdir -p /dev/input/rejoy /run/rejoy/joys/$dev
-            mv /dev/input/$dev /dev/input/rejoy
-            ln -s /dev/input/rejoy/$dev /run/rejoy/joys/$dev/device
+            mkdir -p /run/rejoy/joys/$dev
+            if is $move_devices; then
+                local original=/dev/input/rejoy/$dev
+                mkdir -p /dev/input/rejoy
+                mv /dev/input/$dev $original
+            else original=/dev/input/$dev; fi
+            setfacl -m mask:--- $original  # Prevents interference.
+            ln -s $original /run/rejoy/joys/$dev/device
             start_xbd $dev
         fi
     done
     start_dummy
-    resort_devices
+    resort_events
+    process_js
     reply 0
 }
 
 rm_joysticks () {
     kill_dummy
-    for dev in /dev/input/rejoy/event*; do
+    for joy in /run/rejoy/joys/event*; do
+        dev=$(readlink -f $joy/device)
         if [[ ! "$(udevadm info -n $dev 2> /dev/null)" ]]; then
             echo "$(basename $dev) has been unplugged; shutting down xboxdrv."
             dev="$(basename $dev)"
             kill -9 $(</run/rejoy/joys/$dev/pid)
             wait $(</run/rejoy/joys/$dev/pid)
-            rm $(readlink -f /run/rejoy/joys/$dev/device)
+            is $move_devices && rm $(readlink -f /run/rejoy/joys/$dev/device)
             rm -r /run/rejoy/joys/$dev
         fi
     done
     clean_dead_devices
     start_dummy
-    resort_devices
+    resort_events
+    process_js
     reply 0
 }
 
@@ -232,14 +264,15 @@ reload_xbd () {
     clean_dead_devices
     for dev in /run/rejoy/joys/event*; do start_xbd $(basename $dev); done
     start_dummy
-    resort_devices
+    resort_events
+    process_js
 }
 
 start_xbd () {
-    local cmd=("$xboxdrv_bin" --silent --quiet --evdev "/dev/input/rejoy/$1")
-    cmd+=(--config "$(get_map /dev/input/rejoy/$1)")
+    local cmd=("$xboxdrv_bin" --silent --quiet --evdev $(device $1))
+    cmd+=(--config "$(get_map $(device $1))")
     for opt in /run/rejoy/opts/*; do cmd+=(--config "$opt"); done
-    echo "Starting xboxdrv for $(dev_name /dev/input/rejoy/$1) - ${cmd[@]}"
+    echo "Starting xboxdrv for $(dev_name $(device $1)) - ${cmd[@]}"
     "${cmd[@]}" &
     echo $! > /run/rejoy/joys/$1/pid
     inotifywait -qq -e create /dev/input; sleep 0.1
@@ -280,12 +313,19 @@ clean_dead_devices () {
     done
 }
 
-resort_devices () {
+resort_events () {
     is $resort_sleep && sleep 0.25
-    case $resort_event in
-        1|soft) resort_virt_soft ;;
-        2|hard) resort_virt_hard ;;
-    esac
+    if is $move_devices; then
+        case $resort_event in
+            1|soft) resort_virt_soft ;;
+            2|hard) resort_virt_hard ;;
+        esac
+    fi
+}
+
+process_js () {
+    echo "Processing JS devices."
+    hide_jsdevs
     is $resort_js && resort_jsdevs
 }
 
@@ -338,6 +378,18 @@ resort_virt_hard () {
             mv "$virt" "event$targ"
         fi
     done
+    cd - &> /dev/null
+}
+
+# Hide all non-virtual js devices. delete_jsdev determines how.
+hide_jsdevs () {
+    echo "Hiding non-virtual js devices."
+    cd /dev/input
+    for d in js*; do if ! is_virtual $d; then
+        echo "Hiding $(basename $d)"
+        if is $delete_js; then rm $d
+        else setfacl -m mask:--- $d; fi
+    fi; done
     cd - &> /dev/null
 }
 

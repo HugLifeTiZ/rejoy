@@ -1,8 +1,7 @@
 #!/bin/bash
-[[ "$(whoami)" != "root" ]] && exec sudo "$0" "$@"
 while getopts dt opt; do case $opt in
-    d) export REJOY_DEBUG=1 ;;
-    t) set -o xtrace ;;
+    d) export REJOY_DEBUG=1; opts+="-d ";;
+    t) set -o xtrace; opts+="-t " ;;
 esac; done; shift $((OPTIND-1))
 
 rejoy_bin="$(readlink -f "$0")"
@@ -15,6 +14,12 @@ fi; done; unset rejoy_dir
 source "$rejoy_path/funcs"
 set +o monitor; shopt -s nullglob
 
+[[ -e /etc/rejoy/conf ]] && . /etc/rejoy/conf
+
+# If user is set to non-root, permissions will be set on rejoy's directories
+# and /dev/input, and sudo will be used to switch to the new user. 
+check_user
+
 init_rejoyd
 while inotifywait -qq -e close_write /run/rejoy/control; do
     source /run/rejoy/control
@@ -22,6 +27,7 @@ while inotifywait -qq -e close_write /run/rejoy/control; do
     case ${cmd[0]} in
     add)       add_joysticks ;;
     rm)        rm_joysticks ;;
+    js)        process_js; reply 0 ;;
     options)   set_options "${cmd[@]:1}" ;;
     defaults)  set_defaults "${cmd[@]:1}" ;;
     reset)     reset_options ;;

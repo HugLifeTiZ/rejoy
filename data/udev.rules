@@ -1,5 +1,30 @@
-# udev rules for rejoy
-SUBSYSTEM=="input", ACTION=="add", KERNEL=="event*", ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", RUN+="/usr/local/bin/rejoyctl add"
-SUBSYSTEM=="input", ACTION=="remove", KERNEL=="event*", ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", RUN+="/usr/local/bin/rejoyctl rm"
-SUBSYSTEM=="input", ACTION=="add", KERNEL=="js*", ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", RUN+="/bin/rm %E{DEVNAME}"
-SUBSYSTEM=="input", ACTION=="add", DEVPATH=="*virtual*", MODE:="0666"
+# udev rules for Rejoy.
+# Installs as 99-rejoy.rules.
+
+# Virtual event devices should be world-usable.
+SUBSYSTEM=="input", ACTION=="add", DEVPATH=="*virtual*", \
+ OWNER:="gamepad", GROUP:="input", MODE:="0666"
+
+# When a non-virtual event device appears, change its owner
+# and permissions, then notify Rejoy of its addition.
+SUBSYSTEM=="input", ACTION=="add", KERNEL=="event*", \
+ ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", \
+ OWNER:="gamepad", GROUP:="gamepad", MODE:="0600", \
+ RUN+="/usr/bin/setfacl -m mask:-- %E{DEVNAME}", \
+ RUN+="/usr/local/bin/rejoyctl add"
+
+# Non-virtual js devices should be hidden. Rejoy determines how.
+SUBSYSTEM=="input", ACTION=="add", KERNEL=="js*", \
+ ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", \
+ OWNER:="gamepad", GROUP:="gamepad", MODE:="0600", \
+ RUN+="/usr/local/bin/rejoyctl js"
+
+# Run event device removal events through Rejoy.
+SUBSYSTEM=="input", ACTION=="remove", KERNEL=="event*", \
+ ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", \
+ RUN+="/usr/local/bin/rejoyctl rm"
+
+# Also process JS devices on removal.
+SUBSYSTEM=="input", ACTION=="remove", KERNEL=="js*", \
+ ENV{ID_INPUT_JOYSTICK}=="?*", DEVPATH!="*virtual*", \
+ RUN+="/usr/local/bin/rejoyctl js""

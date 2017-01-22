@@ -3,12 +3,12 @@
 { [[ -e /run/rejoy/control ]] && pgrep rejoyd &> /dev/null ; } || exit 0
 
 # If someone else is making a request, wait for it to complete.
-[[ -e /run/rejoy/lock ]] && inotifywait -qq -e delete_self /run/rejoy/lock
+[[ -e /run/rejoy/lock/on ]] && inotifywait -qq -e delete_self /run/rejoy/lock/on
 
-touch /run/rejoy/lock
+touch /run/rejoy/lock/on
 echo "cmd=($*)" > /run/rejoy/control
 inotifywait -qq -e close_write /run/rejoy/control
 source /run/rejoy/control
 [[ "$output" ]] && echo $output
-rm /run/rejoy/lock
+[[ "$1" != "exit" ]] && rm /run/rejoy/lock/on  # Fails on exit command.
 exit $result
